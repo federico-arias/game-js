@@ -2,53 +2,204 @@ import {get} from './fetch.js';
 import Promise from 'promise-polyfill';
 
 export class GameMap {
-	constructor(jsonPath, ctx) {
+	constructor(jsonPath, render) {
+		this.megaTilesArray = [];
+		this.MEGATILE_W = 100;
+		this.MEGATILE_H = 100;
+		this.viewRectX0 = render.viewRectX0;
+		this.viewRectY0 = render.viewRectY0;
+		this.viewRectX1 = render.viewRectX1;
+		this.viewRectY1 = render.viewRectY1;
+		this.render = render;
 		this.tiles = {};
 		this.tilesets = [];
-		this.ctx = ctx;
 		this.mapa = get(jsonPath)
-			.then( m => {this.w = m.tilewidth;this.h=m.tileheight; return m});
-		this.mapa.then(this.parseTilesets.bind(this));
-		this.mapa.then(this.parseLayer.bind(this));
+			.then( m => {
+				this.tileW = m.tilewidth;
+				this.tileH = m.tileheight; 
+				this.layers = m.layers;
+				this.w = m.tilewidth * m.width;
+				this.h = m.tileheight * m.height;
+				return m;
+			});
+		this.ready = this.mapa.then(this.parseTilesets.bind(this))
+							  .then(this.cacheMegaTiles.bind(this));
 	}
+
+	cacheMegaTiles() {
+		const nMegaTilesInX = 1 + Math.floor(this.w / this.MEGATILE_W);
+		const nMegaTilesInY = 1 + Math.floor(this.h /this.MEGATILE_H);
+		const nMegaTiles  = nMegaTilesInX * nMegaTilesInY;
+
+		for(var yC = 0; yC < nMegaTilesInY; yC++) {
+			for(var xC = 0; xC < nMegaTilesInX; xC++) {
+				var mTile = new MegaTile(this.MEGATILE_W, this.MEGATILE_H);
+				mTile.x = xC * mTile.w;
+				mTile.y = yC * mTile.h;
+				//draw this region of the map into this canvas
+				this.fillMegaTile(mTile);
+				this.megaTilesArray.push(mTile);
+			}
+		}
+	}
+
+	fillMegaTile(mtile) {
+		var ctx2 = mtile.ctx;
+		//clear the tile itself
+		//ctx2.fillRect(0,0,mtile.w, mtile.h);
+		//rect coordinates of megatile relative to world-space
+		var x0 = mtile.x;
+		var y0 = mtile.y;
+		var x1 = mtile.x + mtile.w;
+		var y1 = mtile.y + mtile.h;
+		//for each layer...
+		this.layers.reduce( (acc, layer, i) => {
+			if (layer.type == 'imagelayer') { //TODO layer culling
+				var i = new Image();
+				i.src = '/assets/tilesets/' +  layer.image.match(/\/([^\/]+)\/?$/)[1];
+				return acc.then( _ => new Promise( r => i.onload = _ => r(_) )
+					.then(ctx2.drawImage(i, layer.offsetx - x0, layer.offsety - y0)));
+			}
+			if (layer.type != "tilelayer") return acc;
+			var dat = layer.data;
+			//...find the small tile position for each tile and draw them 
+			return acc.then( _ => dat.reduce( (acc, tId, i, a) => {
+				if (tId == 0) return acc;
+				//figure out the position of small tile in the world
+				let worldX = Math.floor(i % layer.width) * this.tileW;
+				let worldY = Math.floor(i / layer.width) * this.tileH;
+				//figure out if the megatile rectangle intersects with the small tile
+				var visible = GameMap.areIntersecting(y0, worldY, 
+					y1, worldY + layer.tileheight,
+					x0, worldX,
+					x1, worldX + layer.tilewidth);
+				if(!visible) return acc;
+				let tile = this.findTileset(tId).findTile(tId);
+				return acc.then( _ => tile.img.then( _ => ctx2.drawImage(tile.i,
+					tile.x, tile.y,
+					this.tileW, this.tileH,
+					worldX - x0, // tiles are drawn in 
+					worldY - y0, // rect (0, 0) , (mtile.w, mtile.h) canvas
+					this.tileW, this.tileH)));;
+			}, Promise.resolve('first'), this));
+		}, Promise.resolve('first'), this)
+	}
+			/*
+			for (let tileIDX = 0; tileIDX < dat.length; tileIDX++) {
+				let tID = dat[tileIDX];
+				if (tID == 0) continue;
+				//figure out the position of small tile in the world
+				let worldX = Math.floor(tileIDX % layer.width) * this.tileW;
+				let worldY = Math.floor(tileIDX / layer.width) * this.tileH;
+				//figure out if the megatile rectangle intersects with the small tile
+				var visible = GameMap.areIntersecting(y0, worldY, 
+					y1, worldY + layer.tileheight,
+					x0, worldX,
+					x1, worldX + layer.tilewidth);
+				if(!visible) continue;
+				let tile = this.findTileset(tID).findTile(tID);
+				tile.img.then ( _ => {
+					ctx2.drawImage(tile.i,
+						tile.x, tile.y,
+						this.tileW, this.tileH,
+						worldX - x0, // tiles are drawn in 
+						worldY - y0, // rect (0, 0) , (mtile.w, mtile.h) canvas
+						this.tileW, this.tileH);
+				});
+			}
+			*/
 
 	parseTilesets(mapa) {
 		mapa.tilesets.forEach( ts => this.tilesets.push(new Tileset(ts)));
+		//order from biggest to smallest
+		this.tilesets = this.tilesets.sort( (a, b) => a.fgid - b.fgid);
+		return mapa;
 	}
 
-	parseLayer(mapa) {
-		mapa.layers.forEach(this.drawData.bind(this));
+	static areIntersecting(top0, top1, bottom0, bottom1, left0, left1, right0, right1) {
+		return !(left1 > right0 || 
+           right1 < left0 || 
+           top1 > bottom0 ||
+           bottom1 < top0);
 	}
 
-	drawData(layer) {
-		var cols = layer.width;
-		layer.data.forEach( (d,i) => {
-			var tile = this.findTile(d);
-			if (tile !== null)
-			this.drawTile(tile, this._getMatrix(i, cols));
-		});
+	update() {
+		this.viewRectX0 = this.render.viewRectX0;
+		this.viewRectY0 = this.render.viewRectY0;
+		this.viewRectX1 = this.render.viewRectX1;
+		this.viewRectY1 = this.render.viewRectY1;
 	}
 
-	_getMatrix(idx, ncols) {
-		return {
-			x:(idx % ncols) * this.w,
-			y:Math.floor(idx / ncols) * this.h,
-			w:this.w,
-			h:this.h
-		};
-	}
-
-	findTile(gid) {
-		if (gid === 0) return null;
-		return this.tilesets.filter( ts => ts.fgid <= gid && gid < ts.max)[0].findTile(gid);
-	}
-
-	drawTile(tile, coor) {
-		tile.img.then( img => {
-			this.ctx.drawImage(img, tile.x, tile.y, tile.w, tile.h, coor.x, coor.y, coor.w, coor.h)
+	onmapdraw() {
+		for(var q =0; q < this.megaTilesArray.length; q++) {
+			var mtile = this.megaTilesArray[q];
+			if(mtile.isVisibleIn(this))
+				this.render.ctx.drawImage(mtile.canvas, 
+										  mtile.x - this.viewRectX0,
+										  mtile.y - this.viewRectY0);
 		}
-		)
 	}
+
+	draw() {
+		this.onmapdraw();
+		
+		/*
+		this.layers.forEach( layer => {
+			if (layer.type !== 'tilelayer') return;
+			var cols = layer.width;
+			layer.data.forEach( (d,i) => {
+				var worldX = (i % cols) * this.tileW;
+				var worldY = Math.floor(i / cols) * this.tileH;
+				if (worldX + this.tileW < this.viewRectX0 ||
+					worldY + this.tileH < this.viewRectY0 ||
+					worldX > this.viewRectX1 ||
+					worldY > this.viewRectY1) return; 
+				var tileset = this.findTileset(d);
+				if (tileset !== null) {
+					var tile = tileset.findTile(d);
+					tile.img
+						.then(img => this.render.draw(img, tile.x, tile.y, 
+										tile.w, tile.h, worldX, worldY));
+				}
+			}, this);
+		}, this);
+		
+		*/
+	
+	}
+
+	findTileset(gid) {
+		if (gid === 0) return null;
+		var idx = this.tilesets.length - 1;
+		while (this.tilesets[idx].fgid > gid) {
+			idx--;
+		}
+		return this.tilesets[idx];
+	}
+}
+
+class MegaTile {
+	constructor(width, height) {
+		this.x = -1;
+		this.y = -1;
+		this.w = width;
+		this.h = height;
+		//create a brand new canvas object, which is NOT attached to the dop
+		var can2 = document.createElement('canvas');
+		can2.width = width;
+		can2.height = height;
+		this.canvas = can2;
+		this.ctx = can2.getContext('2d');
+	}
+	
+	isVisibleIn(r2) {
+		var r1 = this;
+		return GameMap.areIntersecting(r1.y, r2.y, 
+									   r1.x, r2.x,
+									   r1.x + r1.w, r2.x + r2.w,
+									   r1.y + r1.h, r2.y + r2.h);
+	}
+
 }
 
 class Tileset {
@@ -57,7 +208,7 @@ class Tileset {
 		this.tiles = {};
 		this.fgid = tileset.firstgid;
 		this.cols = tileset.columns;
-		this.max = tileset.tilecount;
+		//this.max = tileset.tilecount;
 		this.wFactor = tileset.tilewidth;
 		this.hFactor = tileset.tileheight;
 		this.img = new Image();
@@ -73,7 +224,9 @@ class Tileset {
 				y: Math.floor(n / this.cols) * this.hFactor,
 				w: this.wFactor,
 				h: this.hFactor,
-				img:this.p
+				img:this.p,
+				id:gid,
+				i:this.img
 			};
 		}
 		return this.tiles[gid];

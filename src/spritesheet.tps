@@ -6,7 +6,7 @@
         <key>texturePackerVersion</key>
         <string>4.5.0</string>
         <key>fileName</key>
-        <string>/home/federico/wame/assets/characters.tps</string>
+        <string>/home/federico/wame/src/spritesheet.tps</string>
         <key>autoSDSettings</key>
         <array>
             <struct type="AutoSDSettings">
@@ -36,7 +36,7 @@
         <key>dataFormat</key>
         <string>json-array</string>
         <key>textureFileName</key>
-        <filename>spritesheet.png</filename>
+        <filename>../assets/spritesheets/spritesheet.png</filename>
         <key>flipPVR</key>
         <false/>
         <key>pvrCompressionQuality</key>
@@ -150,7 +150,7 @@
             <key>data</key>
             <struct type="DataFile">
                 <key>name</key>
-                <filename>../json/spritesheet.json</filename>
+                <filename>../assets/spritesheet.json</filename>
             </struct>
         </map>
         <key>multiPack</key>
@@ -187,7 +187,7 @@
             <key>trimMargin</key>
             <uint>1</uint>
             <key>trimMode</key>
-            <enum type="SpriteSettings::TrimMode">Trim</enum>
+            <enum type="SpriteSettings::TrimMode">None</enum>
             <key>tracerTolerance</key>
             <int>200</int>
             <key>heuristicMask</key>
@@ -199,10 +199,10 @@
         </struct>
         <key>individualSpriteSettings</key>
         <map type="IndividualSpriteSettingsMap">
-            <key type="filename">Boss/BossWalking/BossWalking_01.png</key>
-            <key type="filename">Boss/BossWalking/BossWalking_02.png</key>
-            <key type="filename">Boss/BossWalking/BossWalking_03.png</key>
-            <key type="filename">Boss/BossWalking/BossWalking_04.png</key>
+            <key type="filename">sprites/boss/BossWalking_01.png</key>
+            <key type="filename">sprites/boss/BossWalking_02.png</key>
+            <key type="filename">sprites/boss/BossWalking_03.png</key>
+            <key type="filename">sprites/boss/BossWalking_04.png</key>
             <struct type="IndividualSpriteSettings">
                 <key>pivotPoint</key>
                 <point_f>0.5,0.5</point_f>
@@ -215,13 +215,25 @@
                 <key>scale9FromFile</key>
                 <false/>
             </struct>
+            <key type="filename">sprites/runner/r.png0-0.png</key>
+            <key type="filename">sprites/runner/r.png1-0.png</key>
+            <key type="filename">sprites/runner/r.png2-0.png</key>
+            <struct type="IndividualSpriteSettings">
+                <key>pivotPoint</key>
+                <point_f>0.5,0.5</point_f>
+                <key>scale9Enabled</key>
+                <false/>
+                <key>scale9Borders</key>
+                <rect>4,4,8,8</rect>
+                <key>scale9Paddings</key>
+                <rect>4,4,8,8</rect>
+                <key>scale9FromFile</key>
+                <false/>
+            </struct>
         </map>
         <key>fileList</key>
         <array>
-            <filename>Boss/BossWalking/BossWalking_01.png</filename>
-            <filename>Boss/BossWalking/BossWalking_02.png</filename>
-            <filename>Boss/BossWalking/BossWalking_03.png</filename>
-            <filename>Boss/BossWalking/BossWalking_04.png</filename>
+            <filename>sprites</filename>
         </array>
         <key>ignoreFileList</key>
         <array/>
