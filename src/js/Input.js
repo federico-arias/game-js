@@ -1,12 +1,11 @@
 export class Input {
-	constructor(render) {
+	constructor() {
 		this.bindings = {};
 		this.actions = {};
 		this.setBinding('w', 'move-up');
 		this.setBinding('a', 'move-left');
 		this.setBinding('s', 'move-down');
 		this.setBinding('d', 'move-right');
-		var c = render.canvas;
 		document.addEventListener('keydown', this.onKeyDown.bind(this));
 		document.addEventListener('keyup', this.onKeyUp.bind(this));
 	}

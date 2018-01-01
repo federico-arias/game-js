@@ -6,6 +6,9 @@ export class Game {
 		this.clock = clock;
 		this.entities = [];
 		this.morituri = [];
+	}
+	
+	start() {
 		window.requestAnimationFrame(this.frame.bind(this));
 	}
 

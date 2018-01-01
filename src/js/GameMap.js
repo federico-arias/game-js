@@ -1,11 +1,11 @@
 import {get} from './fetch.js';
-import Promise from 'promise-polyfill';
+//import Promise from 'promise-polyfill';
 
 export class GameMap {
 	constructor(jsonPath, render) {
 		this.megaTilesArray = [];
-		this.MEGATILE_W = 100;
-		this.MEGATILE_H = 100;
+		this.MEGATILE_W = 150;
+		this.MEGATILE_H = 150;
 		this.viewRectX0 = render.viewRectX0;
 		this.viewRectY0 = render.viewRectY0;
 		this.viewRectX1 = render.viewRectX1;
@@ -54,11 +54,17 @@ export class GameMap {
 		var y1 = mtile.y + mtile.h;
 		//for each layer...
 		this.layers.reduce( (acc, layer, i) => {
-			if (layer.type == 'imagelayer') { //TODO layer culling
-				var i = new Image();
-				i.src = '/assets/tilesets/' +  layer.image.match(/\/([^\/]+)\/?$/)[1];
-				return acc.then( _ => new Promise( r => i.onload = _ => r(_) )
-					.then(ctx2.drawImage(i, layer.offsetx - x0, layer.offsety - y0)));
+			if (layer.type == 'imagelayer') { 
+				/*
+				if (layer.offsetx > mtile.w  + mtile.x) return acc;
+				if (layer.offsetx + layer.w < mtile.x) return acc;
+				if (layer.offsety > mtile.h  + mtile.y) return acc;
+				if (layer.offsety + layer.h < mtile.y) return acc;
+				*/
+				var img = new Image();
+				img.src = '/assets/tilesets/' +  layer.image.match(/\/([^\/]+)\/?$/)[1];
+				return acc.then( _ => new Promise( r => img.onload = () => r(img) ))
+					.then( img =>ctx2.drawImage(img, layer.offsetx - x0, layer.offsety - y0));
 			}
 			if (layer.type != "tilelayer") return acc;
 			var dat = layer.data;
@@ -80,34 +86,10 @@ export class GameMap {
 					this.tileW, this.tileH,
 					worldX - x0, // tiles are drawn in 
 					worldY - y0, // rect (0, 0) , (mtile.w, mtile.h) canvas
-					this.tileW, this.tileH)));;
+					this.tileW, this.tileH)));
 			}, Promise.resolve('first'), this));
 		}, Promise.resolve('first'), this)
 	}
-			/*
-			for (let tileIDX = 0; tileIDX < dat.length; tileIDX++) {
-				let tID = dat[tileIDX];
-				if (tID == 0) continue;
-				//figure out the position of small tile in the world
-				let worldX = Math.floor(tileIDX % layer.width) * this.tileW;
-				let worldY = Math.floor(tileIDX / layer.width) * this.tileH;
-				//figure out if the megatile rectangle intersects with the small tile
-				var visible = GameMap.areIntersecting(y0, worldY, 
-					y1, worldY + layer.tileheight,
-					x0, worldX,
-					x1, worldX + layer.tilewidth);
-				if(!visible) continue;
-				let tile = this.findTileset(tID).findTile(tID);
-				tile.img.then ( _ => {
-					ctx2.drawImage(tile.i,
-						tile.x, tile.y,
-						this.tileW, this.tileH,
-						worldX - x0, // tiles are drawn in 
-						worldY - y0, // rect (0, 0) , (mtile.w, mtile.h) canvas
-						this.tileW, this.tileH);
-				});
-			}
-			*/
 
 	parseTilesets(mapa) {
 		mapa.tilesets.forEach( ts => this.tilesets.push(new Tileset(ts)));
@@ -133,10 +115,9 @@ export class GameMap {
 	onmapdraw() {
 		for(var q =0; q < this.megaTilesArray.length; q++) {
 			var mtile = this.megaTilesArray[q];
+			//TODO this is wrong
 			if(mtile.isVisibleIn(this))
-				this.render.ctx.drawImage(mtile.canvas, 
-										  mtile.x - this.viewRectX0,
-										  mtile.y - this.viewRectY0);
+				this.render.drawIn(mtile.canvas, mtile.x, mtile.y);
 		}
 	}
 

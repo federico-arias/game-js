@@ -7,7 +7,7 @@ export class Spritesheet {
 		this.img = new Image();
 		this.img.src = imgUri;
 		this.p = new Promise(r => this.img.onload = _ => r(_));
-		Promise.all([this.p, json])
+		this.ready = Promise.all([this.p, json])
 			.then(this.parseSpritesheet.bind(this));
 	}
 
@@ -16,8 +16,9 @@ export class Spritesheet {
 		var l = sprites.length;
 		for (var i=0;i<l;i++) {
 			var sprite = sprites[i];
-			spriteDict[sprite.filename] = new Sprite({
-				name: sprite.filename,
+			var name = sprite.filename.match(/([^/]+$)/)[0];
+			spriteDict[name] = new Sprite({
+				name: name,
 				w:  sprite.spriteSourceSize.w,
 				h: sprite.spriteSourceSize.h,
 				hh: sprite.spriteSourceSize.h/2,
@@ -83,6 +84,7 @@ class Sprite {
 }
 
 let spriteDict = {};
+
 export const getSprite = function (name) {
 	return spriteDict[name];	
 }

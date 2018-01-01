@@ -82,6 +82,10 @@ export class Physics {
 		return new Vec2(40,0);
 	}
 
+	static goLeft() {
+		return new Vec2(-40,0);
+	}
+
 	static goDown() {
 		return new Vec2(0,40);
 	}

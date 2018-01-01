@@ -203,6 +203,10 @@
             <key type="filename">sprites/boss/BossWalking_02.png</key>
             <key type="filename">sprites/boss/BossWalking_03.png</key>
             <key type="filename">sprites/boss/BossWalking_04.png</key>
+            <key type="filename">sprites/boss/left_BossWalking_01.png</key>
+            <key type="filename">sprites/boss/left_BossWalking_02.png</key>
+            <key type="filename">sprites/boss/left_BossWalking_03.png</key>
+            <key type="filename">sprites/boss/left_BossWalking_04.png</key>
             <struct type="IndividualSpriteSettings">
                 <key>pivotPoint</key>
                 <point_f>0.5,0.5</point_f>

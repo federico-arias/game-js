@@ -28,9 +28,10 @@ export class Player extends Entity {
         };
         this.body = this.physics.createBody(entityDef);
 
-		var walk = new SpriteNamesIterable('BossWalking_0', 1, 4);
-		this.walkRightAnimation = walk.__iter__.bind(walk)();
-		this.walkLeftAnimation = walk.__iter__.bind(walk)();
+		var forward = new SpriteNamesIterable('BossWalking_0', 1, 4);
+		var back = new SpriteNamesIterable('left_BossWalking_0', 1, 4);
+		this.walkRightAnimation = forward.__iter__.bind(forward)();
+		this.walkLeftAnimation = back.__iter__.bind(back)();
 		this.currSpriteNamesIterator = this.walkRightAnimation;
 		this.currSpriteName = this.currSpriteNamesIterator.next();
 	}
@@ -48,6 +49,7 @@ export class Player extends Entity {
 		this.x = this.body.GetPosition().x;
 		this.y = this.body.GetPosition().y;
 		this.isMoving = true;
+		//this.observers();
 		switch (this.input.getStateName()) {
 			case 'move-right':
 				this.currSpriteNamesIterator = this.walkRightAnimation;
@@ -56,6 +58,10 @@ export class Player extends Entity {
 			case 'move-down':
 				this.currSpriteNamesIterator = this.walkRightAnimation;
 				this.body.SetLinearVelocity(Physics.goDown());
+				break;
+			case 'move-left':
+				this.currSpriteNamesIterator = this.walkLeftAnimation;
+				this.body.SetLinearVelocity(Physics.goLeft());
 				break;
 			case 'move-up':
 				this.currSpriteNamesIterator = this.walkRightAnimation;
@@ -84,3 +90,4 @@ export class Player extends Entity {
         return true;
     }
 }
+

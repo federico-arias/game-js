@@ -1,9 +1,10 @@
-import Promise from 'promise-polyfill'; 
+/*import Promise from 'promise-polyfill'; 
  
 // To add to window
 if (!window.Promise) {
   window.Promise = Promise;
 }
+*/
 
 function fetch(method) {
 	return function(url, opts) {

@@ -10883,241 +10883,6 @@ exports.b2Vec2 = Box2D.Common.Math.b2Vec2;
 exports.b2World = Box2D.Dynamics.b2World;
 
 },{}],2:[function(require,module,exports){
-(function (root) {
-
-  // Store setTimeout reference so promise-polyfill will be unaffected by
-  // other code modifying setTimeout (like sinon.useFakeTimers())
-  var setTimeoutFunc = setTimeout;
-
-  function noop() {}
-  
-  // Polyfill for Function.prototype.bind
-  function bind(fn, thisArg) {
-    return function () {
-      fn.apply(thisArg, arguments);
-    };
-  }
-
-  function Promise(fn) {
-    if (!(this instanceof Promise)) throw new TypeError('Promises must be constructed via new');
-    if (typeof fn !== 'function') throw new TypeError('not a function');
-    this._state = 0;
-    this._handled = false;
-    this._value = undefined;
-    this._deferreds = [];
-
-    doResolve(fn, this);
-  }
-
-  function handle(self, deferred) {
-    while (self._state === 3) {
-      self = self._value;
-    }
-    if (self._state === 0) {
-      self._deferreds.push(deferred);
-      return;
-    }
-    self._handled = true;
-    Promise._immediateFn(function () {
-      var cb = self._state === 1 ? deferred.onFulfilled : deferred.onRejected;
-      if (cb === null) {
-        (self._state === 1 ? resolve : reject)(deferred.promise, self._value);
-        return;
-      }
-      var ret;
-      try {
-        ret = cb(self._value);
-      } catch (e) {
-        reject(deferred.promise, e);
-        return;
-      }
-      resolve(deferred.promise, ret);
-    });
-  }
-
-  function resolve(self, newValue) {
-    try {
-      // Promise Resolution Procedure: https://github.com/promises-aplus/promises-spec#the-promise-resolution-procedure
-      if (newValue === self) throw new TypeError('A promise cannot be resolved with itself.');
-      if (newValue && (typeof newValue === 'object' || typeof newValue === 'function')) {
-        var then = newValue.then;
-        if (newValue instanceof Promise) {
-          self._state = 3;
-          self._value = newValue;
-          finale(self);
-          return;
-        } else if (typeof then === 'function') {
-          doResolve(bind(then, newValue), self);
-          return;
-        }
-      }
-      self._state = 1;
-      self._value = newValue;
-      finale(self);
-    } catch (e) {
-      reject(self, e);
-    }
-  }
-
-  function reject(self, newValue) {
-    self._state = 2;
-    self._value = newValue;
-    finale(self);
-  }
-
-  function finale(self) {
-    if (self._state === 2 && self._deferreds.length === 0) {
-      Promise._immediateFn(function() {
-        if (!self._handled) {
-          Promise._unhandledRejectionFn(self._value);
-        }
-      });
-    }
-
-    for (var i = 0, len = self._deferreds.length; i < len; i++) {
-      handle(self, self._deferreds[i]);
-    }
-    self._deferreds = null;
-  }
-
-  function Handler(onFulfilled, onRejected, promise) {
-    this.onFulfilled = typeof onFulfilled === 'function' ? onFulfilled : null;
-    this.onRejected = typeof onRejected === 'function' ? onRejected : null;
-    this.promise = promise;
-  }
-
-  /**
-   * Take a potentially misbehaving resolver function and make sure
-   * onFulfilled and onRejected are only called once.
-   *
-   * Makes no guarantees about asynchrony.
-   */
-  function doResolve(fn, self) {
-    var done = false;
-    try {
-      fn(function (value) {
-        if (done) return;
-        done = true;
-        resolve(self, value);
-      }, function (reason) {
-        if (done) return;
-        done = true;
-        reject(self, reason);
-      });
-    } catch (ex) {
-      if (done) return;
-      done = true;
-      reject(self, ex);
-    }
-  }
-
-  Promise.prototype['catch'] = function (onRejected) {
-    return this.then(null, onRejected);
-  };
-
-  Promise.prototype.then = function (onFulfilled, onRejected) {
-    var prom = new (this.constructor)(noop);
-
-    handle(this, new Handler(onFulfilled, onRejected, prom));
-    return prom;
-  };
-
-  Promise.all = function (arr) {
-    return new Promise(function (resolve, reject) {
-      if (!arr || typeof arr.length === 'undefined') throw new TypeError('Promise.all accepts an array');
-      var args = Array.prototype.slice.call(arr);
-      if (args.length === 0) return resolve([]);
-      var remaining = args.length;
-
-      function res(i, val) {
-        try {
-          if (val && (typeof val === 'object' || typeof val === 'function')) {
-            var then = val.then;
-            if (typeof then === 'function') {
-              then.call(val, function (val) {
-                res(i, val);
-              }, reject);
-              return;
-            }
-          }
-          args[i] = val;
-          if (--remaining === 0) {
-            resolve(args);
-          }
-        } catch (ex) {
-          reject(ex);
-        }
-      }
-
-      for (var i = 0; i < args.length; i++) {
-        res(i, args[i]);
-      }
-    });
-  };
-
-  Promise.resolve = function (value) {
-    if (value && typeof value === 'object' && value.constructor === Promise) {
-      return value;
-    }
-
-    return new Promise(function (resolve) {
-      resolve(value);
-    });
-  };
-
-  Promise.reject = function (value) {
-    return new Promise(function (resolve, reject) {
-      reject(value);
-    });
-  };
-
-  Promise.race = function (values) {
-    return new Promise(function (resolve, reject) {
-      for (var i = 0, len = values.length; i < len; i++) {
-        values[i].then(resolve, reject);
-      }
-    });
-  };
-
-  // Use polyfill for setImmediate for performance gains
-  Promise._immediateFn = (typeof setImmediate === 'function' && function (fn) { setImmediate(fn); }) ||
-    function (fn) {
-      setTimeoutFunc(fn, 0);
-    };
-
-  Promise._unhandledRejectionFn = function _unhandledRejectionFn(err) {
-    if (typeof console !== 'undefined' && console) {
-      console.warn('Possible Unhandled Promise Rejection:', err); // eslint-disable-line no-console
-    }
-  };
-
-  /**
-   * Set the immediate function to execute callbacks
-   * @param fn {function} Function to execute
-   * @deprecated
-   */
-  Promise._setImmediateFn = function _setImmediateFn(fn) {
-    Promise._immediateFn = fn;
-  };
-
-  /**
-   * Change the function to execute on unhandled rejection
-   * @param {function} fn Function to execute on unhandled rejection
-   * @deprecated
-   */
-  Promise._setUnhandledRejectionFn = function _setUnhandledRejectionFn(fn) {
-    Promise._unhandledRejectionFn = fn;
-  };
-  
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = Promise;
-  } else if (!root.Promise) {
-    root.Promise = Promise;
-  }
-
-})(this);
-
-},{}],3:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -11160,7 +10925,7 @@ var Clock = exports.Clock = function () {
 	return Clock;
 }();
 
-},{}],4:[function(require,module,exports){
+},{}],3:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -11212,7 +10977,7 @@ var Entity = exports.Entity = function () {
 	return Entity;
 }();
 
-},{"./Spritesheet.js":11}],5:[function(require,module,exports){
+},{"./Spritesheet.js":10}],4:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -11233,10 +10998,14 @@ var Game = exports.Game = function () {
 		this.clock = clock;
 		this.entities = [];
 		this.morituri = [];
-		window.requestAnimationFrame(this.frame.bind(this));
 	}
 
 	_createClass(Game, [{
+		key: "start",
+		value: function start() {
+			window.requestAnimationFrame(this.frame.bind(this));
+		}
+	}, {
 		key: "frame",
 		value: function frame() {
 			var delta = this.clock.tick();
@@ -11293,7 +11062,7 @@ var Game = exports.Game = function () {
 	return Game;
 }();
 
-},{}],6:[function(require,module,exports){
+},{}],5:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -11305,13 +11074,9 @@ var _createClass = function () { function defineProperties(target, props) { for 
 
 var _fetch = require('./fetch.js');
 
-var _promisePolyfill = require('promise-polyfill');
-
-var _promisePolyfill2 = _interopRequireDefault(_promisePolyfill);
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
-
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
+
+//import Promise from 'promise-polyfill';
 
 var GameMap = exports.GameMap = function () {
 	function GameMap(jsonPath, render) {
@@ -11320,8 +11085,8 @@ var GameMap = exports.GameMap = function () {
 		_classCallCheck(this, GameMap);
 
 		this.megaTilesArray = [];
-		this.MEGATILE_W = 100;
-		this.MEGATILE_H = 100;
+		this.MEGATILE_W = 150;
+		this.MEGATILE_H = 150;
 		this.viewRectX0 = render.viewRectX0;
 		this.viewRectY0 = render.viewRectY0;
 		this.viewRectX1 = render.viewRectX1;
@@ -11374,15 +11139,22 @@ var GameMap = exports.GameMap = function () {
 			//for each layer...
 			this.layers.reduce(function (acc, layer, i) {
 				if (layer.type == 'imagelayer') {
-					//TODO layer culling
-					var i = new Image();
-					i.src = '/assets/tilesets/' + layer.image.match(/\/([^\/]+)\/?$/)[1];
+					/*
+     if (layer.offsetx > mtile.w  + mtile.x) return acc;
+     if (layer.offsetx + layer.w < mtile.x) return acc;
+     if (layer.offsety > mtile.h  + mtile.y) return acc;
+     if (layer.offsety + layer.h < mtile.y) return acc;
+     */
+					var img = new Image();
+					img.src = '/assets/tilesets/' + layer.image.match(/\/([^\/]+)\/?$/)[1];
 					return acc.then(function (_) {
-						return new _promisePolyfill2.default(function (r) {
-							return i.onload = function (_) {
-								return r(_);
+						return new Promise(function (r) {
+							return img.onload = function () {
+								return r(img);
 							};
-						}).then(ctx2.drawImage(i, layer.offsetx - x0, layer.offsety - y0));
+						});
+					}).then(function (img) {
+						return ctx2.drawImage(img, layer.offsetx - x0, layer.offsety - y0);
 					});
 				}
 				if (layer.type != "tilelayer") return acc;
@@ -11404,36 +11176,11 @@ var GameMap = exports.GameMap = function () {
 								worldY - y0, // rect (0, 0) , (mtile.w, mtile.h) canvas
 								_this2.tileW, _this2.tileH);
 							});
-						});;
-					}, _promisePolyfill2.default.resolve('first'), _this2);
+						});
+					}, Promise.resolve('first'), _this2);
 				});
-			}, _promisePolyfill2.default.resolve('first'), this);
+			}, Promise.resolve('first'), this);
 		}
-		/*
-  for (let tileIDX = 0; tileIDX < dat.length; tileIDX++) {
-  	let tID = dat[tileIDX];
-  	if (tID == 0) continue;
-  	//figure out the position of small tile in the world
-  	let worldX = Math.floor(tileIDX % layer.width) * this.tileW;
-  	let worldY = Math.floor(tileIDX / layer.width) * this.tileH;
-  	//figure out if the megatile rectangle intersects with the small tile
-  	var visible = GameMap.areIntersecting(y0, worldY, 
-  		y1, worldY + layer.tileheight,
-  		x0, worldX,
-  		x1, worldX + layer.tilewidth);
-  	if(!visible) continue;
-  	let tile = this.findTileset(tID).findTile(tID);
-  	tile.img.then ( _ => {
-  		ctx2.drawImage(tile.i,
-  			tile.x, tile.y,
-  			this.tileW, this.tileH,
-  			worldX - x0, // tiles are drawn in 
-  			worldY - y0, // rect (0, 0) , (mtile.w, mtile.h) canvas
-  			this.tileW, this.tileH);
-  	});
-  }
-  */
-
 	}, {
 		key: 'parseTilesets',
 		value: function parseTilesets(mapa) {
@@ -11461,7 +11208,8 @@ var GameMap = exports.GameMap = function () {
 		value: function onmapdraw() {
 			for (var q = 0; q < this.megaTilesArray.length; q++) {
 				var mtile = this.megaTilesArray[q];
-				if (mtile.isVisibleIn(this)) this.render.ctx.drawImage(mtile.canvas, mtile.x - this.viewRectX0, mtile.y - this.viewRectY0);
+				//TODO this is wrong
+				if (mtile.isVisibleIn(this)) this.render.drawIn(mtile.canvas, mtile.x, mtile.y);
 			}
 		}
 	}, {
@@ -11552,7 +11300,7 @@ var Tileset = function () {
 		this.hFactor = tileset.tileheight;
 		this.img = new Image();
 		this.img.src = '/assets/tilesets/' + tileset.image.match(/\/([^\/]+)\/?$/)[1];
-		this.p = new _promisePolyfill2.default(function (r) {
+		this.p = new Promise(function (r) {
 			return self.img.onload = function () {
 				return r(self.img);
 			};
@@ -11581,7 +11329,7 @@ var Tileset = function () {
 	return Tileset;
 }();
 
-},{"./fetch.js":12,"promise-polyfill":2}],7:[function(require,module,exports){
+},{"./fetch.js":11}],6:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -11593,7 +11341,7 @@ var _createClass = function () { function defineProperties(target, props) { for 
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 
 var Input = exports.Input = function () {
-	function Input(render) {
+	function Input() {
 		_classCallCheck(this, Input);
 
 		this.bindings = {};
@@ -11602,7 +11350,6 @@ var Input = exports.Input = function () {
 		this.setBinding('a', 'move-left');
 		this.setBinding('s', 'move-down');
 		this.setBinding('d', 'move-right');
-		var c = render.canvas;
 		document.addEventListener('keydown', this.onKeyDown.bind(this));
 		document.addEventListener('keyup', this.onKeyUp.bind(this));
 	}
@@ -11643,7 +11390,7 @@ var Input = exports.Input = function () {
 	return Input;
 }();
 
-},{}],8:[function(require,module,exports){
+},{}],7:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -11744,6 +11491,11 @@ var Physics = exports.Physics = function () {
 			return new Vec2(40, 0);
 		}
 	}, {
+		key: 'goLeft',
+		value: function goLeft() {
+			return new Vec2(-40, 0);
+		}
+	}, {
 		key: 'goDown',
 		value: function goDown() {
 			return new Vec2(0, 40);
@@ -11763,7 +11515,7 @@ var Physics = exports.Physics = function () {
 	return Physics;
 }();
 
-},{"box2dweb-commonjs":1}],9:[function(require,module,exports){
+},{"box2dweb-commonjs":1}],8:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -11816,9 +11568,10 @@ var Player = exports.Player = function (_Entity) {
 		};
 		_this.body = _this.physics.createBody(entityDef);
 
-		var walk = new _Spritesheet.SpriteNamesIterable('BossWalking_0', 1, 4);
-		_this.walkRightAnimation = walk.__iter__.bind(walk)();
-		_this.walkLeftAnimation = walk.__iter__.bind(walk)();
+		var forward = new _Spritesheet.SpriteNamesIterable('BossWalking_0', 1, 4);
+		var back = new _Spritesheet.SpriteNamesIterable('left_BossWalking_0', 1, 4);
+		_this.walkRightAnimation = forward.__iter__.bind(forward)();
+		_this.walkLeftAnimation = back.__iter__.bind(back)();
 		_this.currSpriteNamesIterator = _this.walkRightAnimation;
 		_this.currSpriteName = _this.currSpriteNamesIterator.next();
 		return _this;
@@ -11840,6 +11593,7 @@ var Player = exports.Player = function (_Entity) {
 			this.x = this.body.GetPosition().x;
 			this.y = this.body.GetPosition().y;
 			this.isMoving = true;
+			//this.observers();
 			switch (this.input.getStateName()) {
 				case 'move-right':
 					this.currSpriteNamesIterator = this.walkRightAnimation;
@@ -11848,6 +11602,10 @@ var Player = exports.Player = function (_Entity) {
 				case 'move-down':
 					this.currSpriteNamesIterator = this.walkRightAnimation;
 					this.body.SetLinearVelocity(_Physics.Physics.goDown());
+					break;
+				case 'move-left':
+					this.currSpriteNamesIterator = this.walkLeftAnimation;
+					this.body.SetLinearVelocity(_Physics.Physics.goLeft());
 					break;
 				case 'move-up':
 					this.currSpriteNamesIterator = this.walkRightAnimation;
@@ -11880,7 +11638,7 @@ var Player = exports.Player = function (_Entity) {
 	return Player;
 }(_Entity2.Entity);
 
-},{"./Entity.js":4,"./Physics.js":8,"./Spritesheet.js":11}],10:[function(require,module,exports){
+},{"./Entity.js":3,"./Physics.js":7,"./Spritesheet.js":10}],9:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -11896,21 +11654,31 @@ var Render = exports.Render = function () {
 		_classCallCheck(this, Render);
 
 		this.canvas = document.createElement('canvas');
-		this.canvas.setAttribute('width', w);
-		this.canvas.setAttribute('height', h);
+		this.canvas.setAttribute('width', w + 'px');
+		this.canvas.setAttribute('height', h + 'px');
 		this.ctx = this.canvas.getContext('2d');
 		parent.appendChild(this.canvas);
 		//visible portion of the map
 		this.viewRectX0 = 0;
-		this.viewRectY0 = 0;
+		this.viewRectY0 = 480;
 		this.viewRectX1 = parseInt(w);
 		this.viewRectY1 = parseInt(h);
 	}
 
 	_createClass(Render, [{
+		key: 'moveUp',
+		value: function moveUp(y) {
+			this.viewRectY0 -= y;
+		}
+	}, {
 		key: 'draw',
 		value: function draw(image, sx, sy, w, h, wx, wy) {
 			this.ctx.drawImage(image, sx, sy, w, h, this.x(wx), this.y(wy), w, h);
+		}
+	}, {
+		key: 'drawIn',
+		value: function drawIn(image, dx, dy) {
+			this.ctx.drawImage(image, this.x(dx), this.y(dy));
 		}
 	}, {
 		key: 'draw2x',
@@ -11918,17 +11686,17 @@ var Render = exports.Render = function () {
 			this.ctx.drawImage(image, sx, sy, w, h, this.x(wx), this.y(wy), 1.2 * w, 1.2 * h);
 		}
 
-		//returns the x coordinate in canvas from the physics world x coordinate
+		//returns the x coordinate in canvas from the world x coordinate
 
 	}, {
 		key: 'x',
-		value: function x(physX) {
-			return physX - this.viewRectX0;
+		value: function x(worldX) {
+			return worldX - this.viewRectX0;
 		}
 	}, {
 		key: 'y',
-		value: function y(physY) {
-			return physY - this.viewRectX0;
+		value: function y(worldY) {
+			return worldY - this.viewRectY0;
 		}
 	}, {
 		key: 'getState',
@@ -11940,7 +11708,7 @@ var Render = exports.Render = function () {
 	return Render;
 }();
 
-},{}],11:[function(require,module,exports){
+},{}],10:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -11969,7 +11737,7 @@ var Spritesheet = exports.Spritesheet = function () {
 				return r(_);
 			};
 		});
-		Promise.all([this.p, json]).then(this.parseSpritesheet.bind(this));
+		this.ready = Promise.all([this.p, json]).then(this.parseSpritesheet.bind(this));
 	}
 
 	_createClass(Spritesheet, [{
@@ -11979,8 +11747,9 @@ var Spritesheet = exports.Spritesheet = function () {
 			var l = sprites.length;
 			for (var i = 0; i < l; i++) {
 				var sprite = sprites[i];
-				spriteDict[sprite.filename] = new Sprite({
-					name: sprite.filename,
+				var name = sprite.filename.match(/([^/]+$)/)[0];
+				spriteDict[name] = new Sprite({
+					name: name,
 					w: sprite.spriteSourceSize.w,
 					h: sprite.spriteSourceSize.h,
 					hh: sprite.spriteSourceSize.h / 2,
@@ -12061,33 +11830,29 @@ var Sprite = function () {
 }();
 
 var spriteDict = {};
+
 var getSprite = exports.getSprite = function getSprite(name) {
 	return spriteDict[name];
 };
 
-},{"./fetch.js":12}],12:[function(require,module,exports){
+},{"./fetch.js":11}],11:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
 	value: true
 });
-exports.put = exports.post = exports.get = undefined;
-
-var _promisePolyfill = require('promise-polyfill');
-
-var _promisePolyfill2 = _interopRequireDefault(_promisePolyfill);
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
-
+/*import Promise from 'promise-polyfill'; 
+ 
 // To add to window
 if (!window.Promise) {
-	window.Promise = _promisePolyfill2.default;
+  window.Promise = Promise;
 }
+*/
 
 function fetch(method) {
 	return function (url, opts) {
 		opts = opts || {};
-		var p = new _promisePolyfill2.default(function (resolve, reject) {
+		var p = new Promise(function (resolve, reject) {
 			var xhr = new XMLHttpRequest();
 			xhr.open(method, url);
 			opts.headers ? opts.headers.forEach(function (h) {
@@ -12111,7 +11876,7 @@ var get = exports.get = fetch('GET');
 var post = exports.post = fetch('POST');
 var put = exports.put = fetch('PUT');
 
-},{"promise-polyfill":2}],13:[function(require,module,exports){
+},{}],12:[function(require,module,exports){
 'use strict';
 
 var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
@@ -12139,25 +11904,27 @@ function _possibleConstructorReturn(self, call) { if (!self) { throw new Referen
 function _inherits(subClass, superClass) { if (typeof superClass !== "function" && superClass !== null) { throw new TypeError("Super expression must either be null or a function, not " + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
 
 var PHYSICS_INTERVAL = 1 / 60; // 0.16 s
-
+//var renderer = new Render(document.getElementById('plan-de-carrera'), '600', '160');
 var renderer = new _Render.Render(document.body, '600', '160');
-//TODO no need for a spritesheet class
 var ss = new _Spritesheet.Spritesheet('/assets/spritesheets/spritesheet.png', '/assets/spritesheet.json', renderer);
 var map = new _GameMap.GameMap('/assets/atlas.json', renderer);
 var physics = new _Physics.Physics(PHYSICS_INTERVAL);
-var input = new _Input.Input(renderer);
-var player = new _PlayerEntity.Player(12, 12, physics, input);
+var input = new _Input.Input();
+var player = new _PlayerEntity.Player(220, 370, physics, input);
 var clock = new _Clock.Clock();
 
 var RutaGame = function (_Game) {
 	_inherits(RutaGame, _Game);
 
-	function RutaGame(map, physics, input, clock, player) {
+	function RutaGame(map, physics, input, clock, player, renderer) {
 		_classCallCheck(this, RutaGame);
 
 		var _this = _possibleConstructorReturn(this, (RutaGame.__proto__ || Object.getPrototypeOf(RutaGame)).call(this, map, physics, input, clock));
 
+		_this.render = renderer;
 		_this.entities.push(player);
+		_this.player0 = player;
+		_this.start();
 		return _this;
 	}
 
@@ -12167,6 +11934,7 @@ var RutaGame = function (_Game) {
 			this.physics.update();
 			this.map.update();
 			this.updateEntities();
+			if (this.player0.y - this.render.viewRectY0 < 30) this.render.moveUp(this.player0.speed);
 		}
 	}, {
 		key: 'draw',
@@ -12179,9 +11947,8 @@ var RutaGame = function (_Game) {
 	return RutaGame;
 }(_Game2.Game);
 
-map.ready.then(function (_) {
-	return new RutaGame(map, physics, input, clock, player);
+Promise.all([map.ready, ss.ready]).then(function (_) {
+	return new RutaGame(map, physics, input, clock, player, renderer);
 });
-//window.setTimeout(_ => new RutaGame(map, physics, input, clock, player), 6000)
 
-},{"./Clock.js":3,"./Game.js":5,"./GameMap.js":6,"./Input.js":7,"./Physics.js":8,"./PlayerEntity.js":9,"./Render.js":10,"./Spritesheet.js":11}]},{},[13]);
+},{"./Clock.js":2,"./Game.js":4,"./GameMap.js":5,"./Input.js":6,"./Physics.js":7,"./PlayerEntity.js":8,"./Render.js":9,"./Spritesheet.js":10}]},{},[12]);
